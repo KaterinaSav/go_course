@@ -27,14 +27,14 @@ func main() {
 
 func dirTree(out io.Writer, path string, printFiles bool) error {
     level := 0
-    err := visitAllDir(out, path, printFiles, level)
+    err := visitAllDir(out, path, printFiles, level, false)
     if err != nil {
         return err
     }
     return nil
 }
 
-func visitAllDir(out io.Writer, path string, printFiles bool, level int) error {
+func visitAllDir(out io.Writer, path string, printFiles bool, level int, parentLastFile bool) error {
     var files []os.FileInfo
     files, err := visitDir(path, printFiles)
     if err != nil {
@@ -43,23 +43,25 @@ func visitAllDir(out io.Writer, path string, printFiles bool, level int) error {
     sort.Slice(files, func(i, j int) bool { return files[i].Name() < files[j].Name() })
     filesLength := len(files)
     for index, file := range files {
+        lastFileIndex := filesLength - 1 == index
         if (file.IsDir()) {
-            lastFileIndex := filesLength - 1 == index
             filename := filepath.Join(path, "/", file.Name())
             if index == 0 {
                 level++
             }
-            printFile(file.Name(), level, lastFileIndex)
-            err := visitAllDir(out, filename, printFiles, level)
+            printFile(file.Name(), level, lastFileIndex, parentLastFile)
+            err := visitAllDir(out, filename, printFiles, level, lastFileIndex)
             if err != nil {
                 return err
             }
+        } else {
+            printFile(file.Name(), level, lastFileIndex, parentLastFile)
         }
     }
     return nil
 }
 
-func printFile(name string, level int, lastFileIndex bool) {
+func printFile(name string, level int, lastFileIndex bool, parentLastFile bool) {
     levels := make([]int, level)
     var lastResult string
     var firstResult string
@@ -67,8 +69,17 @@ func printFile(name string, level int, lastFileIndex bool) {
         lastIndex := index + 1 == level
         firstIndex := index == 0 && !lastIndex
         beforeLastIndex := index + 2 == level && !firstIndex
-        if beforeLastIndex {
-            firstResult = firstResult + strings.Repeat(" ", defaultCounter)
+        if lastFileIndex {
+            if !lastIndex  && !parentLastFile {
+                firstResult = firstResult + " │" + strings.Repeat(" ", defaultCounter - 1)
+            }
+            if !firstIndex && !lastIndex {
+               firstResult = firstResult + strings.Repeat(" ", defaultCounter)
+            }
+
+            if parentLastFile && !lastIndex {
+                firstResult = firstResult + strings.Repeat(" ", defaultCounter)
+            }
         }
 
         if lastIndex {
@@ -79,8 +90,8 @@ func printFile(name string, level int, lastFileIndex bool) {
             }
             lastResult = lastResult + strings.Repeat("─", defaultCounter)
         }
-        if !beforeLastIndex && !lastIndex {
-            firstResult = firstResult + " │" + strings.Repeat(" ", defaultCounter)
+        if !beforeLastIndex && !lastIndex && !lastFileIndex {
+            firstResult = firstResult + " │" + strings.Repeat(" ", defaultCounter - 1)
         }
     }
 
