@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"time"
 )
 
 func main() {
@@ -19,6 +21,7 @@ func main() {
         }),
         job(SingleHash),
         job(MultiHash),
+        job(CombineResults),
         job(func(in, out chan interface{}) {
             dataRaw := <-in
             data := fmt.Sprintf("%v", dataRaw)
@@ -31,18 +34,19 @@ func main() {
 }
 
 func ExecutePipeline(jobs ...job) {
-    in := make(chan interface {})
-    out := make(chan interface {})
+    in := make(chan interface {}, 1)
+    out := make(chan interface {}, 1)
 	Pipeline(jobs, in , out)
 }
 
 type blankChan chan interface {}
 
 func Pipeline(jobs []job, in blankChan, out blankChan) {
+    defer close(out)
     jobsCount := len(jobs)
     chans := make([]blankChan, 0, jobsCount)
     for range jobs {
-            ch1 := make(blankChan)
+            ch1 := make(blankChan, 1)
             chans = append(chans, ch1)
         }
     for i := range jobs {
@@ -58,13 +62,10 @@ func Pipeline(jobs []job, in blankChan, out blankChan) {
 }
 
 var SingleHash = func(in, out chan interface{}) {
+    timer := time.NewTimer(3 * time.Second)
     for {
         select {
-            case dataRaw, ok := <-in:
-            if !ok {
-                close(out)
-                return
-            }
+            case dataRaw := <-in:
                data := fmt.Sprintf("%v", dataRaw)
                fmt.Println(data + " SingleHash " + "data " + data)
                md5Data := DataSignerMd5(data)
@@ -76,18 +77,19 @@ var SingleHash = func(in, out chan interface{}) {
                result := crc32Data + "~" + crc32md5Data
                fmt.Println(data + " SingleHash " + "result " + result)
                out <- result
+            case <-timer.C:
+                close(in)
+                close(out)
             }
         }
-
 }
 
 var MultiHash = func(in, out chan interface{}) {
     for {
         select {
             case dataRaw, ok := <-in:
-                if ok == false {
+                if !ok {
                     close(out)
-                    return
                 }
                 data := fmt.Sprintf("%v", dataRaw)
                 iterationsNum := 6
@@ -105,7 +107,17 @@ var MultiHash = func(in, out chan interface{}) {
 }
 
 var CombineResults = func(in, out chan interface{}) {
-    dataRaw := <-in
-    data := dataRaw.(string)
-    out <- data
+    result := make([]string, 0)
+    for {
+        select {
+            case dataRaw, ok := <-in:
+                if !ok {
+                    finalResult := strings.Join(result, "_")
+                    fmt.Println("CombineResults " + finalResult)
+                    out <- finalResult
+                }
+                data := fmt.Sprintf("%v", dataRaw)
+                result = append(result, data)
+        }
+    }
 }
