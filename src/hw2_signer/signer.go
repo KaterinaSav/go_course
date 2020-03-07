@@ -36,13 +36,25 @@ func ExecutePipeline(jobs ...job) {
 	Pipeline(jobs, in , out)
 }
 
-func Pipeline(jobs []job, in chan interface {}, out chan interface {}) {
-    middleCh1 := make(chan interface {}, 5)
-    middleCh2 := make(chan interface {}, 5)
+type blankChan chan interface {}
 
-    go jobs[0](in, middleCh1)
-    go jobs[1](middleCh1, middleCh2)
-    go jobs[2](middleCh2, out)
+func Pipeline(jobs []job, in blankChan, out blankChan) {
+    jobsCount := len(jobs)
+    chans := make([]blankChan, 0, jobsCount)
+    for range jobs {
+            ch1 := make(blankChan)
+            chans = append(chans, ch1)
+        }
+    for i := range jobs {
+        i := i
+        if i == 0 {
+            go jobs[i](in, chans[i])
+        } else if i == (jobsCount - 1) {
+            go jobs[i](chans[i - 1], out)
+        } else {
+            go jobs[i](chans[i - 1], chans[i])
+        }
+    }
 }
 
 var SingleHash = func(in, out chan interface{}) {
